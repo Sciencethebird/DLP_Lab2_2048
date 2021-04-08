@@ -1,2 +1,2 @@
 # DLP_Labs
-2021, Summer, Deep Learning and Practice, Homework Labs
+Lab2, modify smaple code to implement state value evaluation
