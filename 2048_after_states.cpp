@@ -31,7 +31,8 @@
  * output streams
  * to enable debugging (more output), just change the line to 'std::ostream& debug = std::cout;'
  */
-std::ostream& info = std::cout;
+
+std::ostream& info = std::cout; // reference declaration, it's basically like call-by-reference fucntion aruguments
 std::ostream& error = std::cerr;
 std::ostream& debug = *(new std::ofstream);
 
@@ -454,7 +455,8 @@ public:
 		}
 	}
 	pattern(const pattern& p) = delete;
-	virtual ~pattern() {}
+	virtual ~pattern() {} // you don't need do specify "virtual" in derived class, but it's a good practice
+
 	pattern& operator =(const pattern& p) = delete;
 
 public:
@@ -463,16 +465,26 @@ public:
 	 * estimate the value of a given board
 	 */
 	virtual float estimate(const board& b) const {
-		// TODO
-
+		float value = 0;
+		for (int i = 0; i < iso_last; i++) {
+			size_t index = indexof(isomorphic[i], b);
+			value += operator[](index);
+		}
+		return value;
 	}
 
 	/**
 	 * update the value of a given board, and return its updated value
 	 */
 	virtual float update(const board& b, float u) {
-		// TODO
-
+		float u_split = u / iso_last;
+		float value = 0;
+		for (int i = 0; i < iso_last; i++) {
+			size_t index = indexof(isomorphic[i], b);
+			operator[](index) += u_split;
+			value += operator[](index);
+		}
+		return value;
 	}
 
 	/**
@@ -509,7 +521,10 @@ public:
 protected:
 
 	size_t indexof(const std::vector<int>& patt, const board& b) const {
-		// TODO
+		size_t index = 0;
+		for (size_t i = 0; i < patt.size(); i++)
+			index |= b.at(patt[i]) << (4 * i);
+		return index;
 	}
 
 	std::string nameof(const std::vector<int>& patt) const {
@@ -544,7 +559,7 @@ public:
 
 	void set_before_state(const board& b) { before = b; }
 	void set_after_state(const board& b) { after = b; }
-	void set_value(float v) { esti = v; }
+	void set_value(float v) { esti = v; } // used by learning::select_best_move()
 	void set_reward(int r) { score = r; }
 	void set_action(int a) { opcode = a; }
 
@@ -570,8 +585,8 @@ public:
 	bool assign(const board& b) {
 		debug << "assign " << name() << std::endl << b;
 		after = before = b;
-		score = after.move(opcode);
-		esti = score;
+		score = after.move(opcode); // score after single movement
+		esti = score; //esti will be updated by select_best_move
 		return score != -1;
 	}
 
@@ -653,7 +668,7 @@ public:
 	/**
 	 * update the value of given state and return its new value
 	 */
-	float update(const board& b, float u) const {
+	float update(const board& b, float u) const { /// here
 		debug << "update " << " (" << u << ")" << std::endl << b;
 		float u_split = u / feats.size();
 		float value = 0;
@@ -675,13 +690,12 @@ public:
 	 *
 	 * you may simply return state() if no valid move
 	 */
-	state select_best_move(const board& b) const {
+	state select_best_move(const board& b) const {  /// !!!!here
 		state after[4] = { 0, 1, 2, 3 }; // up, right, down, left
 		state* best = after;
 		for (state* move = after; move != after + 4; move++) {
 			if (move->assign(b)) {
-				// TODO
-
+				move->set_value(move->reward() + estimate(move->after_state()));
 				if (move->value() > best->value())
 					best = move;
 			} else {
@@ -706,9 +720,34 @@ public:
 	 *  { (s0,s0',a0,r0), (s1,s1',a1,r1), (s2,s2,x,-1) }
 	 *  where (x,x,x,x) means (before state, after state, action, reward)
 	 */
-	void update_episode(std::vector<state>& path, float alpha = 0.1) const {
-		// TODO
+	void update_episode(std::vector<state>& path, float alpha = 0.1) const { 
+		/*
+			after state method update the value of after state according to the paper:
 
+				V(s') = V(s') + alpha * (r_next + V(s'_next) - V(s'))
+
+				V  : value
+				s  : current state
+				s' : after state (after move, tiles merges...) if current state
+				s'': next state (after move, random generation)
+				r_next : reward of next state
+
+		*/
+		float exact = 0;
+		for (path.pop_back() /* terminal state */; path.size(); path.pop_back()) {
+
+			state& move = path.back();
+
+			float error = exact - (move.value() - move.reward());  
+			// exact = r_next + V(s'_next)
+			// (move.value() - move.reward()) = V(s'), since move.value() = move->reward() + estimate(move->after_state())
+
+			debug << "update error = " << error << " for after state" << std::endl << move.after_state();
+			exact = move.reward() + update(move.after_state(), alpha * error); 
+			// update all feature weights with alpha * error, and return total value of features
+			// in update(), it's already V(S) + alpha * td_error
+
+		}
 	}
 
 	/**
@@ -824,17 +863,17 @@ private:
 
 int main(int argc, const char* argv[]) {
 	info << "TDL2048-Demo" << std::endl;
-	learning tdl;
+	learning tdl; // td learning class
 
 	// set the learning parameters
 	float alpha = 0.1;
-	size_t total = 100000;
-	unsigned seed;
-	__asm__ __volatile__ ("rdtsc" : "=a" (seed));
+	size_t total = 1000000;
+	unsigned seed = 3181160631;
+	__asm__ __volatile__ ("rdtsc" : "=a" (seed)); // I will study this later
 	info << "alpha = " << alpha << std::endl;
 	info << "total = " << total << std::endl;
 	info << "seed = " << seed << std::endl;
-	std::srand(seed);
+	std::srand(seed); // seed the rand(), if use rand() before srand(), rand() will act like rand()
 
 	// initialize the features
 	tdl.add_feature(new pattern({ 0, 1, 2, 3, 4, 5 }));
@@ -842,8 +881,9 @@ int main(int argc, const char* argv[]) {
 	tdl.add_feature(new pattern({ 0, 1, 2, 4, 5, 6 }));
 	tdl.add_feature(new pattern({ 4, 5, 6, 8, 9, 10 }));
 
+	
 	// restore the model from file
-	tdl.load("");
+	//tdl.load("");
 
 	// train the model
 	std::vector<state> path;
@@ -854,7 +894,8 @@ int main(int argc, const char* argv[]) {
 
 		// play an episode
 		debug << "begin episode" << std::endl;
-		b.init();
+		b.init(); // init board with zero value and generates two random tiles 
+		//info << b;
 		while (true) {
 			debug << "state" << std::endl << b;
 			state best = tdl.select_best_move(b);
@@ -863,9 +904,10 @@ int main(int argc, const char* argv[]) {
 			if (best.is_valid()) {
 				debug << "best " << best;
 				score += best.reward();
-				b = best.after_state();
-				b.popup();
+				b = best.after_state(); // board after movement
+				b.popup();              // board after random generation
 			} else {
+				//std::cout << n <<"th score: " << score << std::endl;
 				break;
 			}
 		}
@@ -878,7 +920,7 @@ int main(int argc, const char* argv[]) {
 	}
 
 	// store the model into file
-	tdl.save("");
-
+	//tdl.save("");
+	
 	return 0;
 }
