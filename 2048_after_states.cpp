@@ -746,7 +746,7 @@ public:
 			exact = move.reward() + update(move.after_state(), alpha * error); 
 			// update all feature weights with alpha * error, and return total value of features
 			// in update(), it's already V(S) + alpha * td_error
-
+›
 		}
 	}
 
