@@ -724,16 +724,30 @@ public:
 				*/
 				
 				// find empty location
-				std::vector<int> emtpy_loc;
+				std::vector<int> empty_loc;
 				board curr_board = move->after_state();
 				for(int i = 0; i< 16; i++){
-					if (curr_board.at(i) == 0) emtpy_loc.push_back(i);
+					if (curr_board.at(i) == 0) empty_loc.push_back(i);
 				}
 
 				//for(auto loc : emtpy_loc){
 				//	std::cout << loc << " ";
 				//}std::cout << std::endl;
 
+				float sum_of_next_states = 0;
+				for(int i = 0; i< empty_loc.size(); i++){
+
+					curr_board = move->after_state();
+					curr_board.set(empty_loc[i], 1);
+					sum_of_next_states += 0.9*estimate(curr_board);
+
+					curr_board = move->after_state();
+					curr_board.set(empty_loc[i], 2);
+					sum_of_next_states += 0.1*estimate(curr_board);
+
+				}
+				sum_of_next_states /= empty_loc.size();
+				/*
 				float sum_of_next_states = 0;
 				if(emtpy_loc.size() == 1) {
 					curr_board = move->after_state();
@@ -774,6 +788,7 @@ public:
 					}
 					sum_of_next_states *= p_comb;
 				}
+				*/
 				//printf("sum: %f\n", sum_of_next_states );
 				move->set_value(move->reward() + sum_of_next_states);
 				
@@ -839,12 +854,17 @@ public:
 	 *  '93.7%': 93.7% (937 games) reached 8192-tiles in last 1000 games (a.k.a. win rate of 8192-tile)
 	 *  '22.4%': 22.4% (224 games) terminated with 8192-tiles (the largest) in last 1000 games
 	 */
-	void make_statistic(size_t n, const board& b, int score, int unit = 50) {
+	void make_statistic(size_t n, const board& b, int score, int unit = 100) {
+		static std::vector<int> score_history;
+		static int max_score, best_2048_batch, best_2048_acc;
 		scores.push_back(score);
+		score_history.push_back(score);
 		maxtile.push_back(0);
 		for (int i = 0; i < 16; i++) {
 			maxtile.back() = std::max(maxtile.back(), b.at(i));
 		}
+		max_score = std::max(max_score, score);
+
 
 		if (n % unit == 0) { // show the training process
 			if (scores.size() != size_t(unit) || maxtile.size() != size_t(unit)) {
@@ -863,11 +883,27 @@ public:
 			info << "\t" "mean = " << mean;
 			info << "\t" "max = " << max;
 			info << std::endl;
+			
+
+			std::fstream file;
+			file.open("score_history.txt", std::ios::out | std::ios::trunc);
+			for(auto score: score_history){
+				file << score << "\n";
+			}
+			file.close();
+
 			for (int t = 1, c = 0; c < unit; c += stat[t++]) {
 				if (stat[t] == 0) continue;
 				int accu = std::accumulate(stat + t, stat + 16, 0);
 				info << "\t" << ((1 << t) & -2u) << "\t" << (accu * coef) << "%";
 				info << "\t(" << (stat[t] * coef) << "%)" << std::endl;
+				if(t == 11 && ((accu * coef) >  best_2048_acc) ){
+					best_2048_batch = n;
+					best_2048_acc = (accu * coef) ;
+					file.open("best_2048.txt", std::ios::out | std::ios::trunc);
+					file << "best acc: " << best_2048_acc << "%, at " << best_2048_batch << "\n";
+					file.close();
+				}
 			}
 			scores.clear();
 			maxtile.clear();
@@ -936,8 +972,8 @@ int main(int argc, const char* argv[]) {
 	learning tdl;
 
 	// set the learning parameters
-	float alpha = 0.1;
-	size_t total = 100000;
+	float alpha = 0.05;
+	size_t total = 200000;
 	unsigned seed;
 	__asm__ __volatile__ ("rdtsc" : "=a" (seed));
 	info << "alpha = " << alpha << std::endl;
@@ -978,7 +1014,7 @@ int main(int argc, const char* argv[]) {
 				break;
 			}
 		}
-		printf("%d th complete\n", n);
+		//printf("%d th complete\n", n);
 		//debug << "end episode" << std::endl;
 
 		// update by TD(0)
