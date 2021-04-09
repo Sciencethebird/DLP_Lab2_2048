@@ -599,7 +599,7 @@ public:
 	 * return true if the action is valid for the given state
 	 */
 	bool assign(const board& b) {
-		debug << "assign " << name() << std::endl << b;
+		//debug << "assign " << name() << std::endl << b;
 		after = before = b;
 		score = after.move(opcode);
 		esti = score;
@@ -673,7 +673,7 @@ public:
 	 * accumulate the total value of given state
 	 */
 	float estimate(const board& b) const {
-		debug << "estimate " << std::endl << b;
+		//debug << "estimate " << std::endl << b;
 		float value = 0;
 		for (feature* feat : feats) {
 			value += feat->estimate(b);
@@ -685,7 +685,7 @@ public:
 	 * update the value of given state and return its new value
 	 */
 	float update(const board& b, float u) const {
-		debug << "update " << " (" << u << ")" << std::endl << b;
+		//debug << "update " << " (" << u << ")" << std::endl << b;
 		float u_split = u / feats.size();
 		float value = 0;
 		for (feature* feat : feats) {
@@ -783,7 +783,7 @@ public:
 			} else {
 				move->set_value(-std::numeric_limits<float>::max());
 			}
-			debug << "test " << *move;
+			//debug << "test " << *move;
 		}
 		return *best;
 	}
@@ -813,7 +813,7 @@ public:
 			// exact = r_next + V(s'_next)
 			// (move.value() - move.reward()) = V(s'), since move.value() = move->reward() + estimate(move->after_state())
 
-			debug << "update error = " << error << " for after state" << std::endl << move.after_state();
+			//debug << "update error = " << error << " for after state" << std::endl << move.after_state();
 			V_next = update(move.before_state(), alpha * error); 
 			// update all feature weights with alpha * error, and return total value of features
 			// in update(), it's already V(S) + alpha * td_error
@@ -962,10 +962,10 @@ int main(int argc, const char* argv[]) {
 		int score = 0;
 
 		// play an episode
-		debug << "begin episode" << std::endl;
+		//debug << "begin episode" << std::endl;
 		b.init();
 		while (true) {
-			debug << "state" << std::endl << b;
+			//debug << "state" << std::endl << b;
 			state best = tdl.select_best_move(b);
 			path.push_back(best);
 
@@ -979,7 +979,7 @@ int main(int argc, const char* argv[]) {
 			}
 		}
 		printf("%d th complete\n", n);
-		debug << "end episode" << std::endl;
+		//debug << "end episode" << std::endl;
 
 		// update by TD(0)
 		tdl.update_episode(path, alpha);
