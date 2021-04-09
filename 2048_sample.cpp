@@ -445,6 +445,9 @@ public:
 		 * we would be able to use the above method to calculate its 8 isomorphisms
 		 */
 		for (int i = 0; i < 8; i++) {
+			// rotate: 4 patterns
+			// mirror + rotate: 4 patterns
+			// 4 + 4 = 8 
 			board idx = 0xfedcba9876543210ull;
 			if (i >= 4) idx.mirror();
 			idx.rotate(i);
@@ -463,8 +466,12 @@ public:
 	 * estimate the value of a given board
 	 */
 	virtual float estimate(const board& b) const {
-		// TODO
-
+		float value = 0;
+		for(auto iso_patt : isomorphic){
+			size_t index = indexof(iso_patt, b);
+			value += weight[index];
+		}
+		return value;
 	}
 
 	/**
@@ -472,7 +479,14 @@ public:
 	 */
 	virtual float update(const board& b, float u) {
 		// TODO
-
+		u /= isomorphic.size(); // split value assigned to each iso patterns
+		float value = 0;        // sums up the updated iso patt values
+		for(auto iso_patt : isomorphic){
+			size_t index = indexof(iso_patt, b);
+			weight[index] += u;
+			value += weight[index];
+		}
+		return value;
 	}
 
 	/**
@@ -509,7 +523,24 @@ public:
 protected:
 
 	size_t indexof(const std::vector<int>& patt, const board& b) const {
-		// TODO
+		/*
+		calculate the index of current pattern
+
+		according to the paper, index is calculated as bellow:
+			board (log2 as value)
+				6 0 3 2
+				7 1 0 1
+				1 3 0 1
+				7 0 0 0
+			if pattern {0, 1, 2, 3, 4, 5}
+			then the idex is 6*c^0 + 0*c^1 + 3*c^2 + 2*c^3 + 7*c^4 + 1*c^5
+			c is the greatest value we could possibly have (we choose c = 16 thus 2^16 here)
+		*/
+		size_t index = 0;
+		for(int i = 0; i< patt.size(); i++){
+			index |= (b.at(patt[i]) << (i*4) );
+		}
+		return index;
 	}
 
 	std::string nameof(const std::vector<int>& patt) const {
@@ -680,7 +711,72 @@ public:
 		state* best = after;
 		for (state* move = after; move != after + 4; move++) {
 			if (move->assign(b)) {
-				// TODO
+				// TODO, EVALUATE
+				/*
+				for TD-state evaluation
+				value of state is evalualted by:
+
+						r + sum(P(s, a, s") * V(s"))
+
+					r  : reward of current state
+					s" : all possible next state
+					P(s, a, s") : probability of next state
+				*/
+				
+				// find empty location
+				std::vector<int> emtpy_loc;
+				board curr_board = move->after_state();
+				for(int i = 0; i< 16; i++){
+					if (curr_board.at(i) == 0) emtpy_loc.push_back(i);
+				}
+
+				//for(auto loc : emtpy_loc){
+				//	std::cout << loc << " ";
+				//}std::cout << std::endl;
+
+				float sum_of_next_states = 0;
+				if(emtpy_loc.size() == 1) {
+					curr_board = move->after_state();
+					curr_board.set(emtpy_loc[0], 1);
+					sum_of_next_states += 0.9*estimate(curr_board);
+					curr_board = move->after_state();
+					curr_board.set(emtpy_loc[0], 2);
+					sum_of_next_states += 0.1*estimate(curr_board);
+				}else{
+					// select to empty tile and calculate possible next state
+					float p_comb = 2.0 / ( emtpy_loc.size()*(emtpy_loc.size()-1) );
+					//printf("comb: %f, %d \n",p_comb );
+					for(int i = 0; i< emtpy_loc.size(); i++){
+						for(int j = i+1; j< emtpy_loc.size(); j++){
+							//printf("comb: %d, %d\n",emtpy_loc[i], emtpy_loc[j] );
+							
+							//std::cout << curr_board << std::endl;
+							curr_board = move->after_state();
+							curr_board.set(i, 1);
+							curr_board.set(j, 1);
+							sum_of_next_states += 0.81*estimate(curr_board);
+	
+							curr_board = move->after_state();
+							curr_board.set(i, 1);
+							curr_board.set(j, 2);
+							sum_of_next_states += 0.09*estimate(curr_board);
+
+							curr_board = move->after_state();
+							curr_board.set(i, 2);
+							curr_board.set(j, 1);
+							sum_of_next_states += 0.09*estimate(curr_board);
+
+							curr_board = move->after_state();
+							curr_board.set(i, 2);
+							curr_board.set(j, 2);
+							sum_of_next_states += 0.01*estimate(curr_board);
+						}
+					}
+					sum_of_next_states *= p_comb;
+				}
+				//printf("sum: %f\n", sum_of_next_states );
+				move->set_value(move->reward() + sum_of_next_states);
+				
 
 				if (move->value() > best->value())
 					best = move;
@@ -706,9 +802,22 @@ public:
 	 *  { (s0,s0',a0,r0), (s1,s1',a1,r1), (s2,s2,x,-1) }
 	 *  where (x,x,x,x) means (before state, after state, action, reward)
 	 */
-	void update_episode(std::vector<state>& path, float alpha = 0.1) const {
+	void update_episode(std::vector<state>& path, float alpha = 0.01) const {
 		// TODO
+		float V_next = 0;
+		for (path.pop_back() /* terminal state */; path.size(); path.pop_back()) {
 
+			state& move = path.back();
+
+			float error = move.reward() + V_next - estimate(move.before_state()); 
+			// exact = r_next + V(s'_next)
+			// (move.value() - move.reward()) = V(s'), since move.value() = move->reward() + estimate(move->after_state())
+
+			debug << "update error = " << error << " for after state" << std::endl << move.after_state();
+			V_next = update(move.before_state(), alpha * error); 
+			// update all feature weights with alpha * error, and return total value of features
+			// in update(), it's already V(S) + alpha * td_error
+		}
 	}
 
 	/**
@@ -730,7 +839,7 @@ public:
 	 *  '93.7%': 93.7% (937 games) reached 8192-tiles in last 1000 games (a.k.a. win rate of 8192-tile)
 	 *  '22.4%': 22.4% (224 games) terminated with 8192-tiles (the largest) in last 1000 games
 	 */
-	void make_statistic(size_t n, const board& b, int score, int unit = 1000) {
+	void make_statistic(size_t n, const board& b, int score, int unit = 50) {
 		scores.push_back(score);
 		maxtile.push_back(0);
 		for (int i = 0; i < 16; i++) {
@@ -869,6 +978,7 @@ int main(int argc, const char* argv[]) {
 				break;
 			}
 		}
+		printf("%d th complete\n", n);
 		debug << "end episode" << std::endl;
 
 		// update by TD(0)
