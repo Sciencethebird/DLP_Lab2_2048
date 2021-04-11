@@ -1,1 +1,1 @@
-best acc: 4%, at 3100
+best acc: 86.8%, at 124000

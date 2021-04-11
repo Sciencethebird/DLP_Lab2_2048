@@ -854,9 +854,12 @@ public:
 	 *  '93.7%': 93.7% (937 games) reached 8192-tiles in last 1000 games (a.k.a. win rate of 8192-tile)
 	 *  '22.4%': 22.4% (224 games) terminated with 8192-tiles (the largest) in last 1000 games
 	 */
-	void make_statistic(size_t n, const board& b, int score, int unit = 100) {
+	void make_statistic(size_t n, const board& b, int score, int unit = 1000) {
 		static std::vector<int> score_history;
-		static int max_score, best_2048_batch, best_2048_acc;
+		static std::vector<int> mean_score_history;
+		static std::vector<float> win_rate_history;
+		static int max_score, best_2048_batch;
+		static float  best_2048_acc;
 		scores.push_back(score);
 		score_history.push_back(score);
 		maxtile.push_back(0);
@@ -884,6 +887,7 @@ public:
 			info << "\t" "max = " << max;
 			info << std::endl;
 			
+			mean_score_history.push_back(mean);
 
 			std::fstream file;
 			file.open("score_history.txt", std::ios::out | std::ios::trunc);
@@ -891,19 +895,36 @@ public:
 				file << score << "\n";
 			}
 			file.close();
-
+			file.open("mean_score_history.txt", std::ios::out | std::ios::trunc);
+			for(auto score: mean_score_history){
+				file << score << "\n";
+			}
+			file.close();
+			bool have_2048 = false;
 			for (int t = 1, c = 0; c < unit; c += stat[t++]) {
 				if (stat[t] == 0) continue;
 				int accu = std::accumulate(stat + t, stat + 16, 0);
 				info << "\t" << ((1 << t) & -2u) << "\t" << (accu * coef) << "%";
 				info << "\t(" << (stat[t] * coef) << "%)" << std::endl;
-				if(t == 11 && ((accu * coef) >  best_2048_acc) ){
-					best_2048_batch = n;
-					best_2048_acc = (accu * coef) ;
-					file.open("best_2048.txt", std::ios::out | std::ios::trunc);
-					file << "best acc: " << best_2048_acc << "%, at " << best_2048_batch << "\n";
+				if(t == 11){
+					if( (accu * coef) >  best_2048_acc ){
+						best_2048_batch = n;
+						best_2048_acc = (accu * coef) ;
+						file.open("best_2048.txt", std::ios::out | std::ios::trunc);
+						file << "best acc: " << best_2048_acc << "%, at " << best_2048_batch << "\n";
+						file.close();
+					}
+					win_rate_history.push_back((accu * coef));
+					file.open("win_rate_history.txt", std::ios::out | std::ios::trunc);
+					for(auto rate : win_rate_history){
+						file << rate << std::endl;
+					}
 					file.close();
+					have_2048 = true;
 				}
+			}
+			if(!have_2048){
+				win_rate_history.push_back(0);
 			}
 			scores.clear();
 			maxtile.clear();
@@ -972,8 +993,8 @@ int main(int argc, const char* argv[]) {
 	learning tdl;
 
 	// set the learning parameters
-	float alpha = 0.05;
-	size_t total = 200000;
+	float alpha = 0.1;
+	size_t total = 2000000;
 	unsigned seed;
 	__asm__ __volatile__ ("rdtsc" : "=a" (seed));
 	info << "alpha = " << alpha << std::endl;
